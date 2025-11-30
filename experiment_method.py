@@ -1,194 +1,66 @@
 import random
 import numpy as np
-import math
-import heapq 
-from scipy.optimize import linear_sum_assignment 
-# 以下是可视化所需的依赖：
 import matplotlib.pyplot as plt 
-# 注意：Normalize 是 plt.Normalize 的简写，但为清晰，我们用 plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize 
-from abstract_class import Net, Customer, Car, Node 
-from main_method import match_orders, shortest_path
+from abstract_class import Net, Customer, Car
+from main_method import match_orders_dynamic, shortest_path # 确保只导入需要的
 
-def generate_mock_data(net, num_orders=20):
-    """生成测试数据。"""
-    customers = []
-    cars = []
-    
+# ----------------- 辅助函数 -----------------
+
+def calculate_average_edge_weight(net):
+    """计算地图所有边的平均权重，作为时间窗成本的基准 T_win"""
+    valid_weights = net.adj_matrix[net.adj_matrix != np.inf]
+    if len(valid_weights) == 0: return 10.0
+    return np.mean(valid_weights)
+
+def generate_new_orders(net, num_new_orders, current_id_counter, time_window_index):
+    """在每个时间窗生成新订单"""
+    new_customers = []
     hotspots = [n for n in net.nodes if n.type == 'hotspot']
-    traffic_lights = [n for n in net.nodes if n.type == 'traffic_light'] 
-    normals = [n for n in net.nodes if n.type == 'normal']
     
-    print(f"地图统计: 总节点 {len(net.nodes)}, 闹市区节点 {len(hotspots)}, 红绿灯节点 {len(traffic_lights)}, 普通节点 {len(normals)}")
-
-    for i in range(num_orders):
+    for _ in range(num_new_orders):
+        # 70% 概率从闹市区出发
         if hotspots and random.random() < 0.7:
             start_node = random.choice(hotspots)
         else:
             start_node = random.choice(net.nodes)
             
         end_node = random.choice(net.nodes)
-        
         while end_node.id == start_node.id:
             end_node = random.choice(net.nodes)
             
-        cust = Customer(id=i, start_node=start_node, end_node=end_node, creation_time=0)
-        customers.append(cust)
-
-        car_start_node = random.choice(net.nodes)
-        car = Car(id=i, current_node=car_start_node)
-        cars.append(car)
+        cust = Customer(id=current_id_counter, start_node=start_node, end_node=end_node, creation_time=time_window_index)
+        new_customers.append(cust)
+        current_id_counter += 1
         
-    return customers, cars
+    return new_customers, current_id_counter
 
-def run_experiment():
-    """
-    运行完整的调度实验流程：初始化网络、生成数据、匹配订单、统计指标。
-    """
 
-    # 1. 初始化网络 (使用 20x20 网格)
-    print(">>> 正在初始化网络...")
-    net = Net(20, 20) 
-    
-    # 核心修改 2: 调用可视化函数，并短暂暂停刷新
-    
+# ----------------- 可视化函数 (新增) -----------------
 
-    # 2. 生成数据 (20个订单，20辆车)
-    print(">>> 正在生成模拟数据...")
-    customers, cars = generate_mock_data(net, num_orders=20)
-    
-    # 3. 运行核心调度算法
-    print(">>> 正在进行订单匹配 (匈牙利算法)...")
-    assignment, total_empty_cost, details = match_orders(customers, cars, net) # type: ignore
-    
-    if assignment is None:
-        print("匹配失败，请检查车辆和订单数量。")
-        return
-
-    # 4. 计算核心指标
-    print(">>> 正在计算核心实验指标...")
-    
-    wait_times = []      
-    loaded_distances = [] 
-    
-    for cust_id, car_id in assignment.items():
-        pickup_dist, _ = details[(cust_id, car_id)]
-        wait_times.append(pickup_dist)
-        
-        cust = next(c for c in customers if c.id == cust_id)
-        
-        trip_dist, _ = shortest_path(cust.start_node.id, cust.end_node.id, net)
-        loaded_distances.append(trip_dist)
-
-    # 5. 统计输出
-    avg_wait_time = np.mean(wait_times)
-    max_wait_time = np.max(wait_times)
-    total_loaded_dist = sum(loaded_distances)
-    total_total_dist = total_empty_cost + total_loaded_dist
-    
-    utilization_rate = total_loaded_dist / total_total_dist if total_total_dist > 0 else 0
-
-    print("-" * 30)
-    print("📊 实验结果报告")
-    print("-" * 30)
-    print(f"1. 平均顾客等待时间 (空驶成本): {avg_wait_time:.2f}")
-    print(f"2. 最长顾客等待时间 (长尾效应): {max_wait_time:.2f}")
-    print(f"3. 总空驶成本 (调度成本):       {total_empty_cost:.2f}")
-    print(f"4. 载客总里程 (服务价值):       {total_loaded_dist:.2f}")
-    print(f"5. 车辆里程利用率:             {utilization_rate * 100:.2f}%")
-    print("-" * 30)
-
-    if assignment:
-        sample_cust_id = list(assignment.keys())[0]
-        sample_car_id = assignment[sample_cust_id]
-        dist, path = details[(sample_cust_id, sample_car_id)]
-        print(f"\n[样例] 顾客 {sample_cust_id} 被指派给 车辆 {sample_car_id}")
-        print(f"       接驾距离: {dist:.2f}")
-        print(f"       接驾路径: {path}")
-    
-    visualize_net_weights(net, title=f"Map Weights (Grid: {net.n}x{net.m}) - Max Factor Overlay, R={net.hotspot_radius}") 
-    plt.show()
-
-# 导入抽象类以便于类型引用 (如果需要，但这里只涉及数据结构)
-
-# --- 1. 定义颜色映射 (权重越大越红) ---
 def create_detailed_colormap():
-# ... (函数体不变) ...
-    """
-    创建自定义的颜色映射。权重越大越红 (2.5)，权重越小越绿 (1.0)。
-    """
-    # 颜色列表 (从低因子颜色 (1.0) 到高因子颜色 (2.5))
-    colors_for_cmap = [
-        'darkgreen',    # 对应 1.0 (权重最小)
-        'lime',
-        'yellowgreen',
-        'gold',
-        'orange',
-        'orangered',
-        'red',
-        'darkred'       # 对应 2.5 (权重最大)
-    ]
-    
-    return LinearSegmentedColormap.from_list("red_to_green_traffic", colors_for_cmap)
+    """创建自定义颜色映射：从黄色到橙色到红色，表示流量因子增加"""
+    # 颜色列表: Yellow (1.0) -> Orange -> Red (2.5)
+    colors = [(1, 1, 0), (1, 0.5, 0), (1, 0, 0)] 
+    cmap_name = 'hotspot_traffic'
+    cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=100)
+    return cm
 
-
-# --- 2. 辅助函数：计算最大权重（用于可视化） ---
-def _calculate_hotspot_max_factor_vis(net, x, y):
-# ... (函数体不变) ...
-    """
-    镜像 Net._calculate_hotspot_max_factor 逻辑，用于可视化所有节点的权重。
-    """
-    
-    HOTSPOT_MAX_FACTOR = 2.5 
-    HOTSPOT_MIN_FACTOR = 1.0 
-    factor_range = HOTSPOT_MAX_FACTOR - HOTSPOT_MIN_FACTOR # 1.5
-
-    max_factor = 1.0 
-    
-    if not net.hotspot_centers:
-        return max_factor
-
-    for cx, cy in net.hotspot_centers:
-        dist = math.sqrt((x - cx)**2 + (y - cy)**2)
-        
-        if dist < net.hotspot_radius:
-            d_norm = dist / net.hotspot_radius
-            # 线性衰减公式
-            current_factor = HOTSPOT_MAX_FACTOR - d_norm * factor_range
-            
-            # 核心要求：取最大值
-            max_factor = max(max_factor, current_factor)
-    
-    return max_factor
-
-def visualize_net_weights(net, title="Map Node Traffic Factors (Grid: 20x20) - Max Factor Overlay"):
-    """
-    可视化地图网格节点的交通因子 (1.0 到 2.5)。
-    """
-    
-    TRAFFIC_LIGHT_FACTOR = 1.8
+def visualize_net_weights(net):
+    """可视化网络地图，根据流量因子对节点进行颜色编码"""
+    # HOTSPOT_MAX_FACTOR 应该与 Net 类中的定义一致
     HOTSPOT_MAX_FACTOR = 2.5 
     
-    num_nodes = net.n * net.m
-    x_coords = [n.x for n in net.nodes]
-    y_coords = [n.y for n in net.nodes]
+    x_coords = [node.x for node in net.nodes]
+    y_coords = [node.y for node in net.nodes]
     
-    node_factors = np.zeros(num_nodes)
-    
+    # 1. 计算每个节点的权重因子
+    node_factors = np.ones(len(net.nodes))
     for i, node in enumerate(net.nodes):
-        factor = 1.0
-        
-        if node.type == 'traffic_light':
-            factor = TRAFFIC_LIGHT_FACTOR
-        
-        # 无论节点类型是 'hotspot' 还是 'normal'，只要它位于闹市区影响范围内，
-        # 都应计算其基于距离的最大权重。
-        # traffic_light 权重固定，所以排除。
-        if node.type != 'traffic_light':
-             # **** 核心修改：所有节点权重基于最大权重计算 ****
-             factor = _calculate_hotspot_max_factor_vis(net, node.x, node.y)
-            
-        node_factors[i] = factor
+        if node.type == 'hotspot':
+            # 注意: _calculate_hotspot_max_factor 是 Net 的私有方法，用于计算节点权重
+            factor = net._calculate_hotspot_max_factor(node.x, node.y)
+            node_factors[i] = factor
 
     # 2. 定义颜色映射 (Colormap) 和归一化
     cmap = create_detailed_colormap()
@@ -217,20 +89,137 @@ def visualize_net_weights(net, title="Map Node Traffic Factors (Grid: 20x20) - M
 
     # 5. 添加颜色条 (Colorbar)
     cbar = plt.colorbar(scatter, fraction=0.04, pad=0.04)
-    cbar.set_label('Node Traffic Factor (2.5 = Dark Red, 1.0 = Dark Green)', rotation=270, labelpad=20)
+    cbar.set_label(f'Node Traffic Factor ({HOTSPOT_MAX_FACTOR} = Max Hotspot, 1.0 = Normal)', fontsize=12)
 
     # 6. 设置图表属性
-    plt.title(title)
-    plt.xlabel("X Coordinate")
-    plt.ylabel("Y Coordinate")
-    
-    plt.xlim(-0.5, net.m - 0.5)
-    plt.ylim(-0.5, net.n - 0.5)
-    plt.xticks(range(net.m)) 
-    plt.yticks(range(net.n)) 
-    plt.grid(True, linestyle='--', alpha=0.6) 
-    plt.gca().set_aspect('equal', adjustable='box') 
+    plt.title('Network Grid Visualization by Traffic Factor', fontsize=16)
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.xticks(np.arange(net.m))
+    plt.yticks(np.arange(net.n))
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.show()
 
-    # 7. 显示图形
-    # 核心修改 3: 用 plt.draw() 替代 plt.show()
-    plt.draw()
+# ----------------- 主实验逻辑 -----------------
+
+def run_experiment():
+    # 1. 参数设置
+    GRID_W, GRID_H = 20, 20
+    NUM_WINDOWS = 8          # 仿真运行 8 个时间窗
+    INITIAL_CARS = 15        # 只有 15 辆车
+    NEW_ORDERS_PER_WIN = 20  # 每个窗口产生 20 个订单 (订单 > 车辆，必定产生积压)
+    
+    print(f">>> 初始化网络 ({GRID_W}x{GRID_H})...")
+    net = Net(GRID_W, GRID_H)
+    
+    # 计算 T_win: 时间窗的权重因子 (用于平衡距离成本和等待成本)
+    # 设为平均路段长度的 3 倍，意味着等待 1 个窗口相当于多跑 3 个平均路段的距离
+    avg_edge = calculate_average_edge_weight(net)
+    T_win = avg_edge * 3.0 
+    print(f">>> 计算 T_win (时间窗权重) = {T_win:.2f} (基于地图平均边权)")
+
+    # 2. 初始化车辆
+    cars = []
+    for i in range(INITIAL_CARS):
+        start_node = random.choice(net.nodes)
+        cars.append(Car(id=i, current_node=start_node))
+    
+    waiting_customers = [] # 积压池
+    customer_id_counter = 0
+    
+    # 统计数据容器
+    history_stats = []
+
+    print(f">>> 开始仿真: {NUM_WINDOWS} 个时间窗, {INITIAL_CARS} 辆车, 每轮新增 {NEW_ORDERS_PER_WIN} 订单")
+    print("-" * 60)
+
+    # 3. 时间窗循环
+    for t in range(1, NUM_WINDOWS + 1):
+        print(f"\n[时间窗 {t}/{NUM_WINDOWS}]")
+        
+        # 3.1 生成新订单
+        new_orders, customer_id_counter = generate_new_orders(net, NEW_ORDERS_PER_WIN, customer_id_counter, t)
+        waiting_customers.extend(new_orders)
+        
+        # 3.2 筛选可用车辆 (简化：假设上一轮匹配的车这一轮都完成任务变为空闲)
+        available_cars = cars # 所有车都可用 (简化模型)
+        
+        print(f"   当前等待顾客数: {len(waiting_customers)} | 可用车辆数: {len(available_cars)}")
+        
+        # 3.3 核心匹配 (带等待权重)
+        assignment, total_empty_dist, details = match_orders_dynamic(waiting_customers, available_cars, net, T_win)
+        
+        # 3.4 处理匹配结果
+        matched_cust_ids = set(assignment.keys())
+        
+        current_window_wait_times = []
+        current_window_loaded_dist = 0
+        
+        # 3.4.1 处理已匹配顾客
+        unmatched_customers = []
+        
+        for cust in waiting_customers:
+            if cust.id in matched_cust_ids:
+                car_id = assignment[cust.id]
+                car = next(c for c in cars if c.id == car_id)
+                
+                pickup_dist, _ = details[(cust.id, car.id)]
+                
+                # 更新车辆位置到顾客终点 (为下一轮做准备)
+                car.current_node = cust.end_node
+                
+                # 统计
+                wait_cost_time = (cust.missed_windows * T_win) + pickup_dist # 广义等待成本
+                current_window_wait_times.append(wait_cost_time)
+                
+                trip_dist, _ = shortest_path(cust.start_node.id, cust.end_node.id, net)
+                current_window_loaded_dist += trip_dist
+                
+            else:
+                # 3.4.2 处理未匹配顾客
+                cust.missed_windows += 1 # 增加等待计数
+                unmatched_customers.append(cust)
+        
+        # 更新等待池，只保留未匹配的
+        waiting_customers = unmatched_customers
+        
+        # 3.5 记录本轮数据
+        avg_wait = np.mean(current_window_wait_times) if current_window_wait_times else 0
+        total_total_dist = total_empty_dist + current_window_loaded_dist
+        utilization = current_window_loaded_dist / total_total_dist if total_total_dist > 0 else 0
+        
+        stats = {
+            'window': t,
+            'matched': len(matched_cust_ids),
+            'left_over': len(waiting_customers),
+            'avg_wait_score': avg_wait,
+            'total_empty': total_empty_dist,
+            'utilization': utilization
+        }
+        history_stats.append(stats)
+        
+        print(f"   >>> 匹配成功: {stats['matched']}, 滞留: {stats['left_over']}")
+        print(f"   >>> 本轮空驶: {stats['total_empty']:.1f}, 平均等待分数: {stats['avg_wait_score']:.1f}")
+
+    # 4. 最终总结
+    print("\n" + "="*60)
+    print("📊 仿真结束总结报告")
+    print("="*60)
+    print(f"{'时间窗':<5} | {'匹配数':<5} | {'滞留数':<7} | {'利用率':<8} | {'平均等待分数':<12}")
+    print("-" * 60)
+    for s in history_stats:
+        print(f"{s['window']:<8} | {s['matched']:<8} | {s['left_over']:<10} | {s['utilization']*100:.1f}%{'':<6} | {s['avg_wait_score']:.2f}")
+    
+    print("-" * 60)
+    leftover_max_wait = max([c.missed_windows for c in waiting_customers]) if waiting_customers else 0
+    print(f"最终滞留顾客数: {len(waiting_customers)}")
+    print(f"滞留最久的顾客已等待: {leftover_max_wait} 个时间窗")
+    
+    # 5. 可视化地图
+    print("\n正在生成地图可视化...")
+    visualize_net_weights(net)
+
+if __name__ == "__main__":
+    run_experiment()
