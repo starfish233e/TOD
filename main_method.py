@@ -38,7 +38,7 @@ def shortest_path(start_node_id, end_node_id, net):
             path.append((start_node_obj.x, start_node_obj.y))
             return g_score[end_node_id], path[::-1]
             
-        for neighbor_id, cost in enumerate(net.adj_matrix[current_id]):
+        for neighbor_id, cost in enumerate(net.weights_matrix[current_id]):
             if cost == float('inf') or cost == 0: continue
             tentative_g_score = g_score[current_id] + cost
             if tentative_g_score < g_score[neighbor_id]:

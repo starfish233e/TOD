@@ -3,15 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from matplotlib.colors import LinearSegmentedColormap, Normalize 
 from abstract_class import Net, Customer, Car 
-from main_method import match_orders_dynamic, shortest_path # 确保 match_orders_dynamic 接受 alpha
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei'] 
-plt.rcParams['axes.unicode_minus'] = False # 解决负号 '-' 显示为方块的问题
+from main_method import match_orders_dynamic, shortest_path 
 
-# ----------------- 辅助函数 (保持不变) -----------------
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei'] 
+plt.rcParams['axes.unicode_minus'] = False 
 
 def calculate_average_edge_weight(net):
     """计算地图所有边的平均权重，作为时间窗成本的基准 T_win"""
-    valid_weights = net.adj_matrix[net.adj_matrix != np.inf]
+    valid_weights = net.weights_matrix[net.weights_matrix != np.inf]
     if len(valid_weights) == 0: return 10.0
     return np.mean(valid_weights)
 
@@ -36,60 +35,60 @@ def generate_new_orders(net, num_new_orders, current_id_counter, time_window_ind
         
     return new_customers, current_id_counter
 
-def create_detailed_colormap():
-    """创建自定义颜色映射：从黄色到橙色到红色，表示流量因子增加"""
-    colors = [(1, 1, 0), (1, 0.5, 0), (1, 0, 0)] 
-    cmap_name = 'hotspot_traffic'
-    cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=100)
-    return cm
+# def create_detailed_colormap():
+#     """创建自定义颜色映射：从黄色到橙色到红色，表示流量因子增加"""
+#     colors = [(1, 1, 0), (1, 0.5, 0), (1, 0, 0)] 
+#     cmap_name = 'hotspot_traffic'
+#     cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=100)
+#     return cm
 
-def visualize_net_weights(net):
-    """可视化网络地图，根据流量因子对节点进行颜色编码"""
-    HOTSPOT_MAX_FACTOR = 2.5 
+# def visualize_net_weights(net):
+#     """可视化网络地图，根据流量因子对节点进行颜色编码"""
+#     HOTSPOT_MAX_FACTOR = 2.5 
     
-    x_coords = [node.x for node in net.nodes]
-    y_coords = [node.y for node in net.nodes]
+#     x_coords = [node.x for node in net.nodes]
+#     y_coords = [node.y for node in net.nodes]
     
-    node_factors = np.ones(len(net.nodes))
-    for i, node in enumerate(net.nodes):
-        if node.type == 'hotspot':
-            # 假设 Net 类内部有 _calculate_hotspot_max_factor 方法
-            factor = net._calculate_hotspot_max_factor(node.x, node.y)
-            node_factors[i] = factor
+#     node_factors = np.ones(len(net.nodes))
+#     for i, node in enumerate(net.nodes):
+#         if node.type == 'hotspot':
+#             # 假设 Net 类内部有 _calculate_hotspot_max_factor 方法
+#             factor = net._calculate_hotspot_max_factor(node.x, node.y)
+#             node_factors[i] = factor
 
-    cmap = create_detailed_colormap()
-    min_factor = 1.0 
-    max_factor = HOTSPOT_MAX_FACTOR 
-    norm = Normalize(min_factor, max_factor)
+#     cmap = create_detailed_colormap()
+#     min_factor = 1.0 
+#     max_factor = HOTSPOT_MAX_FACTOR 
+#     norm = Normalize(min_factor, max_factor)
     
-    plt.figure(figsize=(10, 10)) 
+#     plt.figure(figsize=(10, 10)) 
     
-    scatter = plt.scatter(x_coords, y_coords, 
-                          c=node_factors, 
-                          cmap=cmap, 
-                          norm=norm, 
-                          s=150, 
-                          edgecolors='black', 
-                          linewidths=0.5)
+#     scatter = plt.scatter(x_coords, y_coords, 
+#                           c=node_factors, 
+#                           cmap=cmap, 
+#                           norm=norm, 
+#                           s=150, 
+#                           edgecolors='black', 
+#                           linewidths=0.5)
 
-    traffic_light_indices = [i for i, n in enumerate(net.nodes) if n.type == 'traffic_light']
-    tl_x = [x_coords[i] for i in traffic_light_indices]
-    tl_y = [y_coords[i] for i in traffic_light_indices]
+#     traffic_light_indices = [i for i, n in enumerate(net.nodes) if n.type == 'traffic_light']
+#     tl_x = [x_coords[i] for i in traffic_light_indices]
+#     tl_y = [y_coords[i] for i in traffic_light_indices]
     
-    plt.scatter(tl_x, tl_y, s=200, marker='s', color='magenta', alpha=0.8, label='红绿灯节点')
+#     plt.scatter(tl_x, tl_y, s=200, marker='s', color='magenta', alpha=0.8, label='红绿灯节点')
 
-    cbar = plt.colorbar(scatter, fraction=0.04, pad=0.04)
-    cbar.set_label(f'节点交通因子 ({HOTSPOT_MAX_FACTOR} = 闹市区最大值, 1.0 = 正常)', fontsize=12)
+#     cbar = plt.colorbar(scatter, fraction=0.04, pad=0.04)
+#     cbar.set_label(f'节点交通因子 ({HOTSPOT_MAX_FACTOR} = 闹市区最大值, 1.0 = 正常)', fontsize=12)
 
-    plt.title('网络地图可视化 (基于交通因子)', fontsize=16)
-    plt.xlabel('X 坐标')
-    plt.ylabel('Y 坐标')
-    plt.xticks(np.arange(net.m))
-    plt.yticks(np.arange(net.n))
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend()
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.show()
+#     plt.title('网络地图可视化 (基于交通因子)', fontsize=16)
+#     plt.xlabel('X 坐标')
+#     plt.ylabel('Y 坐标')
+#     plt.xticks(np.arange(net.m))
+#     plt.yticks(np.arange(net.n))
+#     plt.grid(True, linestyle='--', alpha=0.6)
+#     plt.legend()
+#     plt.gca().set_aspect('equal', adjustable='box')
+#     plt.show()
 
 
 # ----------------- 核心仿真逻辑 (可复用) -----------------
@@ -285,10 +284,6 @@ def run_experiment(run_grid_search=False):
         print(f"总匹配顾客数: {final_summary['total_matched']}")
         print(f"最终滞留顾客数: {final_summary['leftover_cust']}")
         print("-" * 60)
-    
-    # 3. 可视化地图 (两种模式都执行)
-    print("\n正在生成地图可视化...")
-    visualize_net_weights(net)
 
 if __name__ == "__main__":
     # 默认运行单次实验 (alpha=1.0)

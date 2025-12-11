@@ -1,0 +1,2 @@
+hotspot_coords = [(1, 10), (2, 3)]
+hotspot_affiliated_coords = [(1, 9), (2, 2)]
